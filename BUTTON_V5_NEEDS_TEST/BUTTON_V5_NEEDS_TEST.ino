@@ -155,6 +155,15 @@ static esp_err_t sendNow(const uint8_t* mac, const void* buf, size_t len) {
   return esp_now_send(mac, (const uint8_t*)buf, len);
 }
 
+static bool sendRegister() {
+  btn_register_t reg{};
+  reg.kind = BTN_REGISTER;
+  reg.button_id = button_id;
+  reg.ffa = ffa_mode;
+  memcpy(reg.mac, deviceMac, 6);
+  return sendNow(hubAddress, &reg, sizeof(reg)) == ESP_OK;
+}
+
 // ===================================================
 //                 Handle Hub Commands
 // ===================================================
@@ -205,6 +214,11 @@ void handleHubPacket(const uint8_t* data, int len) {
         //   - We locally turn it back on now. Choose ONE policy.
         // Here we choose local policy to honor "LED stays on until depressed".
         ledOn();
+      }
+      if (sendRegister()) {
+        Serial.println("REGISTER re-sent (round reset)");
+      } else {
+        Serial.println("REGISTER send failed (round reset)");
       }
       break;
     }
@@ -275,13 +289,7 @@ void setup() {
   }
 
   // Send REGISTER once
-  btn_register_t reg{};
-  reg.kind = BTN_REGISTER;
-  reg.button_id = button_id;
-  reg.ffa = ffa_mode;
-  memcpy(reg.mac, deviceMac, 6);
-  esp_err_t r = sendNow(hubAddress, &reg, sizeof(reg));
-  Serial.println(r == ESP_OK ? "REGISTER sent" : "REGISTER send failed");
+  Serial.println(sendRegister() ? "REGISTER sent" : "REGISTER send failed");
 }
 
 // ===================================================
@@ -301,12 +309,9 @@ void loop() {
       if (ffa_mode) ledOn(); else ledOff();
     }
     // Optionally inform hub about changed ID/FFA by re-sending REGISTER
-    btn_register_t reg{};
-    reg.kind = BTN_REGISTER;
-    reg.button_id = button_id;
-    reg.ffa = ffa_mode;
-    memcpy(reg.mac, deviceMac, 6);
-    sendNow(hubAddress, &reg, sizeof(reg));
+    if (!sendRegister()) {
+      Serial.println("REGISTER send failed (DIP change)");
+    }
 
     Serial.print("DIP changed -> ID=");
     Serial.print(button_id);

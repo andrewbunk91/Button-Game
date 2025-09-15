@@ -321,8 +321,7 @@ void finishRound() {
   mode = MODE_IDLE;
   expected_id = 1;
   counted = 0;
-  // Immediately re-open registration for the next round
-  clearPeers();
+  // Immediately re-open registration for the next round while keeping peers
   openRegistrationWindow();
 }
 
@@ -350,7 +349,6 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 
       // Start a fresh registration window if currently idle
       if (!reg_open && mode == MODE_IDLE) {
-        clearPeers();
         openRegistrationWindow();
       }
 
@@ -389,7 +387,6 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 
       // If we get a press while idle and no window is open, open a window (optional)
       if (mode == MODE_IDLE && !reg_open) {
-        clearPeers();
         openRegistrationWindow();
         // Treat this press as part of the NEXT round; ignore now.
         Serial.println("[Hub] Press arrived; opened registration. Press ignored until round starts.");

@@ -3,8 +3,8 @@
 // Board: ESP32-WROOM-32
 //
 // Features:
-// - Reads DIP (0..15) as button_id
-// - Detects FFA mode when all 4 DIP switches are ON (value == 15)  <-- tweak if desired
+// - Reads DIP (0..63) as button_id
+// - Detects FFA mode when all DIP switches are ON (value == max)  <-- tweak if desired
 // - On boot: sends REGISTER {button_id, ffa, mac[]}
 // - On press: sends PRESS {button_id, pressed=true, press_id, mac[]}
 // - Includes local press debounce
@@ -12,26 +12,35 @@
 // - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
 //
 // Pin map matches your current sketch:
-//   BUTTON_PIN = 16 (to GND, uses INPUT_PULLUP -> active-low)
-//   LED_PIN    = 27 (LED_ACTIVE_LOW controls polarity)
-//   DIP pins   = {19,18,5,17}
+//   BUTTON_PIN = 25 (to GND, uses INPUT_PULLDOWN -> active-high)
+//   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
+//   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //
 // NOTE: The Hub must be updated to parse these new message "kinds" and fields.
 // ===================================================
 
 #include <esp_now.h>
 #include <WiFi.h>
+#if defined(__has_include)
+#  if __has_include(<esp_wifi.h>)
+#    include <esp_wifi.h>
+#    define HAVE_ESP_WIFI 1
+#  endif
+#endif
 
 // ---------- LED polarity ----------
 #define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
+#define BUTTON_ACTIVE_LOW false  // pressed = HIGH when using INPUT_PULLDOWN
 
 // ---------- IO pins ----------
-const int BUTTON_PIN = 16;
-const int LED_PIN    = 27;
+const int BUTTON_PIN = 25;
+const int LED_PIN    = 32;
 
-// DIP pins (bit0..bit3)
-constexpr uint8_t DIP_PINS[4] = {19, 18, 5, 17};
+// DIP pins (bit0..bit5)
+constexpr uint8_t DIP_PINS[] = {4, 16, 17, 5, 18, 19};
+constexpr uint8_t DIP_COUNT = sizeof(DIP_PINS) / sizeof(DIP_PINS[0]);
 constexpr bool DIP_ACTIVE_LOW = true;  // using INPUT_PULLUP -> ON = LOW
+constexpr uint8_t FFA_PATTERN = (1u << DIP_COUNT) - 1;  // all switches ON
 
 // ---------- Hub MAC (update if needed) ----------
 uint8_t hubAddress[] = {0xCC, 0xDB, 0xA7, 0x2D, 0xD2, 0x48};
@@ -39,8 +48,10 @@ uint8_t hubAddress[] = {0xCC, 0xDB, 0xA7, 0x2D, 0xD2, 0x48};
 // ---------- Debounce ----------
 const unsigned long DEBOUNCE_MS = 30;
 unsigned long lastDebounceTime = 0;
-int lastReading = HIGH;     // INPUT_PULLUP idle
-int debouncedState = HIGH;  // stable state
+const int BUTTON_PRESSED_LEVEL = BUTTON_ACTIVE_LOW ? LOW : HIGH;
+const int BUTTON_IDLE_LEVEL    = BUTTON_ACTIVE_LOW ? HIGH : LOW;
+int lastReading = BUTTON_IDLE_LEVEL;
+int debouncedState = BUTTON_IDLE_LEVEL;
 
 // ---------- Sequences / flash ----------
 const int FLASH_COUNT = 5;
@@ -53,13 +64,18 @@ inline void ledOff() { digitalWrite(LED_PIN, LED_ACTIVE_LOW ? HIGH : LOW ); }
 
 // ---------- Read STA MAC into array ----------
 static void getStaMac(uint8_t out[6]) {
-  esp_read_mac(out, ESP_MAC_WIFI_STA);
+#if defined(ESP_PLATFORM) && defined(HAVE_ESP_WIFI)
+  if (esp_wifi_get_mac(WIFI_IF_STA, out) == ESP_OK) {
+    return;
+  }
+#endif
+  WiFi.macAddress(out);
 }
 
-// ---------- Read DIP as 0..15 ----------
+// ---------- Read DIP as 0..63 ----------
 uint8_t readDip() {
   uint8_t v = 0;
-  for (uint8_t i = 0; i < 4; i++) {
+  for (uint8_t i = 0; i < DIP_COUNT; i++) {
     int s = digitalRead(DIP_PINS[i]);
     if (DIP_ACTIVE_LOW) s = !s; // invert if ON=LOW
     if (s) v |= (1u << i);
@@ -77,7 +93,7 @@ bool pressedEdge() {
   if ((millis() - lastDebounceTime) > DEBOUNCE_MS) {
     if (reading != debouncedState) {
       debouncedState = reading;
-      if (debouncedState == LOW) return true; // just pressed
+      if (debouncedState == BUTTON_PRESSED_LEVEL) return true; // just pressed
     }
   }
   return false;
@@ -108,14 +124,14 @@ enum FeedbackCode : uint8_t {
 // Button -> Hub
 typedef struct __attribute__((packed)) {
   uint8_t kind;       // BTN_REGISTER
-  uint8_t button_id;  // 0..15
+  uint8_t button_id;  // 0..63
   bool    ffa;        // true if this device is in FFA mode (DIP pattern)
   uint8_t mac[6];     // sender STA MAC (also available in recv_info)
 } btn_register_t;
 
 typedef struct __attribute__((packed)) {
   uint8_t  kind;       // BTN_PRESS
-  uint8_t  button_id;  // 0..15
+  uint8_t  button_id;  // 0..63
   bool     pressed;    // always true on edge
   uint16_t press_id;   // increments per press
   uint8_t  mac[6];     // sender MAC for convenience
@@ -153,6 +169,15 @@ static uint16_t press_id = 0;
 // ===================================================
 static esp_err_t sendNow(const uint8_t* mac, const void* buf, size_t len) {
   return esp_now_send(mac, (const uint8_t*)buf, len);
+}
+
+static bool sendRegister() {
+  btn_register_t reg{};
+  reg.kind = BTN_REGISTER;
+  reg.button_id = button_id;
+  reg.ffa = ffa_mode;
+  memcpy(reg.mac, deviceMac, 6);
+  return sendNow(hubAddress, &reg, sizeof(reg)) == ESP_OK;
 }
 
 // ===================================================
@@ -206,6 +231,11 @@ void handleHubPacket(const uint8_t* data, int len) {
         // Here we choose local policy to honor "LED stays on until depressed".
         ledOn();
       }
+      if (sendRegister()) {
+        Serial.println("REGISTER re-sent (round reset)");
+      } else {
+        Serial.println("REGISTER send failed (round reset)");
+      }
       break;
     }
     default:
@@ -240,12 +270,12 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   ledOff();
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
   for (uint8_t p : DIP_PINS) pinMode(p, INPUT_PULLUP);
 
   // Compute initial ID and FFA
   button_id = readDip();
-  ffa_mode  = (button_id == 15);   // <-- define FFA pattern here (all 4 switches ON)
+  ffa_mode  = (button_id == FFA_PATTERN);   // <-- define FFA pattern here (all switches ON)
   Serial.print("Button ID (DIP): "); Serial.println(button_id);
   Serial.print("FFA mode: ");       Serial.println(ffa_mode ? "YES" : "NO");
 
@@ -275,13 +305,7 @@ void setup() {
   }
 
   // Send REGISTER once
-  btn_register_t reg{};
-  reg.kind = BTN_REGISTER;
-  reg.button_id = button_id;
-  reg.ffa = ffa_mode;
-  memcpy(reg.mac, deviceMac, 6);
-  esp_err_t r = sendNow(hubAddress, &reg, sizeof(reg));
-  Serial.println(r == ESP_OK ? "REGISTER sent" : "REGISTER send failed");
+  Serial.println(sendRegister() ? "REGISTER sent" : "REGISTER send failed");
 }
 
 // ===================================================
@@ -294,19 +318,16 @@ void loop() {
   if (now != lastDip) {
     lastDip = now;
     button_id = now;
-    bool newFFA = (button_id == 15); // keep FFA rule consistent with setup
+    bool newFFA = (button_id == FFA_PATTERN); // keep FFA rule consistent with setup
     if (newFFA != ffa_mode) {
       ffa_mode = newFFA;
       locked = false;
       if (ffa_mode) ledOn(); else ledOff();
     }
     // Optionally inform hub about changed ID/FFA by re-sending REGISTER
-    btn_register_t reg{};
-    reg.kind = BTN_REGISTER;
-    reg.button_id = button_id;
-    reg.ffa = ffa_mode;
-    memcpy(reg.mac, deviceMac, 6);
-    sendNow(hubAddress, &reg, sizeof(reg));
+    if (!sendRegister()) {
+      Serial.println("REGISTER send failed (DIP change)");
+    }
 
     Serial.print("DIP changed -> ID=");
     Serial.print(button_id);

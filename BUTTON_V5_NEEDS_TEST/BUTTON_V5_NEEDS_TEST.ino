@@ -3,8 +3,8 @@
 // Board: ESP32-WROOM-32
 //
 // Features:
-// - Reads DIP (0..15) as button_id
-// - Detects FFA mode when all 4 DIP switches are ON (value == 15)  <-- tweak if desired
+// - Reads DIP (0..63) as button_id
+// - Detects FFA mode when all DIP switches are ON (value == max)  <-- tweak if desired
 // - On boot: sends REGISTER {button_id, ffa, mac[]}
 // - On press: sends PRESS {button_id, pressed=true, press_id, mac[]}
 // - Includes local press debounce
@@ -12,9 +12,9 @@
 // - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
 //
 // Pin map matches your current sketch:
-//   BUTTON_PIN = 16 (to GND, uses INPUT_PULLUP -> active-low)
-//   LED_PIN    = 27 (LED_ACTIVE_LOW controls polarity)
-//   DIP pins   = {19,18,5,17}
+//   BUTTON_PIN = 25 (to GND, uses INPUT_PULLUP -> active-low)
+//   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
+//   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //
 // NOTE: The Hub must be updated to parse these new message "kinds" and fields.
 // ===================================================
@@ -26,13 +26,14 @@
 #define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
 
 // ---------- IO pins ----------
-const int BUTTON_PIN = 16;
-const int LED_PIN    = 27;
+const int BUTTON_PIN = 25;
+const int LED_PIN    = 32;
 
-// DIP pins (bit0..bit3)
-constexpr uint8_t DIP_PINS[] = {19, 18, 5, 17};
+// DIP pins (bit0..bit5)
+constexpr uint8_t DIP_PINS[] = {4, 16, 17, 5, 18, 19};
 constexpr uint8_t DIP_COUNT = sizeof(DIP_PINS) / sizeof(DIP_PINS[0]);
 constexpr bool DIP_ACTIVE_LOW = true;  // using INPUT_PULLUP -> ON = LOW
+constexpr uint8_t FFA_PATTERN = (1u << DIP_COUNT) - 1;  // all switches ON
 
 // ---------- Hub MAC (update if needed) ----------
 uint8_t hubAddress[] = {0xCC, 0xDB, 0xA7, 0x2D, 0xD2, 0x48};
@@ -57,7 +58,7 @@ static void getStaMac(uint8_t out[6]) {
   WiFi.macAddress(out);
 }
 
-// ---------- Read DIP as 0..15 ----------
+// ---------- Read DIP as 0..63 ----------
 uint8_t readDip() {
   uint8_t v = 0;
   for (uint8_t i = 0; i < DIP_COUNT; i++) {
@@ -109,14 +110,14 @@ enum FeedbackCode : uint8_t {
 // Button -> Hub
 typedef struct __attribute__((packed)) {
   uint8_t kind;       // BTN_REGISTER
-  uint8_t button_id;  // 0..15
+  uint8_t button_id;  // 0..63
   bool    ffa;        // true if this device is in FFA mode (DIP pattern)
   uint8_t mac[6];     // sender STA MAC (also available in recv_info)
 } btn_register_t;
 
 typedef struct __attribute__((packed)) {
   uint8_t  kind;       // BTN_PRESS
-  uint8_t  button_id;  // 0..15
+  uint8_t  button_id;  // 0..63
   bool     pressed;    // always true on edge
   uint16_t press_id;   // increments per press
   uint8_t  mac[6];     // sender MAC for convenience
@@ -260,7 +261,7 @@ void setup() {
 
   // Compute initial ID and FFA
   button_id = readDip();
-  ffa_mode  = (button_id == 15);   // <-- define FFA pattern here (all 4 switches ON)
+  ffa_mode  = (button_id == FFA_PATTERN);   // <-- define FFA pattern here (all switches ON)
   Serial.print("Button ID (DIP): "); Serial.println(button_id);
   Serial.print("FFA mode: ");       Serial.println(ffa_mode ? "YES" : "NO");
 
@@ -303,7 +304,7 @@ void loop() {
   if (now != lastDip) {
     lastDip = now;
     button_id = now;
-    bool newFFA = (button_id == 15); // keep FFA rule consistent with setup
+    bool newFFA = (button_id == FFA_PATTERN); // keep FFA rule consistent with setup
     if (newFFA != ffa_mode) {
       ffa_mode = newFFA;
       locked = false;

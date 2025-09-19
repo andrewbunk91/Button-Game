@@ -210,7 +210,7 @@ void sendLedSet(const uint8_t mac[6], bool on) {
 }
 
 // Unicast FEEDBACK
-void sendFeedback(const uint8_t mac[6], FeedbackCode code) {
+void sendFeedback(const uint8_t mac[6], uint8_t code) {
   hub_feedback_t m{};
   m.kind = HUB_FEEDBACK;
   m.result = (uint8_t)code;

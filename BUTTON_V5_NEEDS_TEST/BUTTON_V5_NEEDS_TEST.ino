@@ -30,7 +30,8 @@ const int BUTTON_PIN = 16;
 const int LED_PIN    = 27;
 
 // DIP pins (bit0..bit3)
-constexpr uint8_t DIP_PINS[4] = {19, 18, 5, 17};
+constexpr uint8_t DIP_PINS[] = {19, 18, 5, 17};
+constexpr uint8_t DIP_COUNT = sizeof(DIP_PINS) / sizeof(DIP_PINS[0]);
 constexpr bool DIP_ACTIVE_LOW = true;  // using INPUT_PULLUP -> ON = LOW
 
 // ---------- Hub MAC (update if needed) ----------
@@ -53,13 +54,13 @@ inline void ledOff() { digitalWrite(LED_PIN, LED_ACTIVE_LOW ? HIGH : LOW ); }
 
 // ---------- Read STA MAC into array ----------
 static void getStaMac(uint8_t out[6]) {
-  esp_read_mac(out, ESP_MAC_WIFI_STA);
+  WiFi.macAddress(out);
 }
 
 // ---------- Read DIP as 0..15 ----------
 uint8_t readDip() {
   uint8_t v = 0;
-  for (uint8_t i = 0; i < 4; i++) {
+  for (uint8_t i = 0; i < DIP_COUNT; i++) {
     int s = digitalRead(DIP_PINS[i]);
     if (DIP_ACTIVE_LOW) s = !s; // invert if ON=LOW
     if (s) v |= (1u << i);

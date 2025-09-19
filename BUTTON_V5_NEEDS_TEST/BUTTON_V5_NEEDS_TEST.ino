@@ -12,7 +12,9 @@
 // - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
 //
 // Pin map matches your current sketch:
+
 //   BUTTON_PIN = 25 (to GND, uses INPUT_PULLUP -> active-low)
+
 //   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
 //   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //
@@ -30,6 +32,7 @@
 
 // ---------- LED polarity ----------
 #define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
+#define BUTTON_ACTIVE_LOW false  // pressed = HIGH when using INPUT_PULLDOWN
 
 // ---------- IO pins ----------
 const int BUTTON_PIN = 25;
@@ -47,8 +50,10 @@ uint8_t hubAddress[] = {0xCC, 0xDB, 0xA7, 0x2D, 0xD2, 0x48};
 // ---------- Debounce ----------
 const unsigned long DEBOUNCE_MS = 30;
 unsigned long lastDebounceTime = 0;
-int lastReading = HIGH;     // INPUT_PULLUP idle
-int debouncedState = HIGH;  // stable state
+const int BUTTON_PRESSED_LEVEL = BUTTON_ACTIVE_LOW ? LOW : HIGH;
+const int BUTTON_IDLE_LEVEL    = BUTTON_ACTIVE_LOW ? HIGH : LOW;
+int lastReading = BUTTON_IDLE_LEVEL;
+int debouncedState = BUTTON_IDLE_LEVEL;
 
 // ---------- Sequences / flash ----------
 const int FLASH_COUNT = 5;
@@ -90,7 +95,7 @@ bool pressedEdge() {
   if ((millis() - lastDebounceTime) > DEBOUNCE_MS) {
     if (reading != debouncedState) {
       debouncedState = reading;
-      if (debouncedState == LOW) return true; // just pressed
+      if (debouncedState == BUTTON_PRESSED_LEVEL) return true; // just pressed
     }
   }
   return false;
@@ -267,7 +272,7 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   ledOff();
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
   for (uint8_t p : DIP_PINS) pinMode(p, INPUT_PULLUP);
 
   // Compute initial ID and FFA

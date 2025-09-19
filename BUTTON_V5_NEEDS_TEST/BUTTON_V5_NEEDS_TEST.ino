@@ -21,6 +21,12 @@
 
 #include <esp_now.h>
 #include <WiFi.h>
+#if defined(__has_include)
+#  if __has_include(<esp_wifi.h>)
+#    include <esp_wifi.h>
+#    define HAVE_ESP_WIFI 1
+#  endif
+#endif
 
 // ---------- LED polarity ----------
 #define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
@@ -55,6 +61,11 @@ inline void ledOff() { digitalWrite(LED_PIN, LED_ACTIVE_LOW ? HIGH : LOW ); }
 
 // ---------- Read STA MAC into array ----------
 static void getStaMac(uint8_t out[6]) {
+#if defined(ESP_PLATFORM) && defined(HAVE_ESP_WIFI)
+  if (esp_wifi_get_mac(WIFI_IF_STA, out) == ESP_OK) {
+    return;
+  }
+#endif
   WiFi.macAddress(out);
 }
 

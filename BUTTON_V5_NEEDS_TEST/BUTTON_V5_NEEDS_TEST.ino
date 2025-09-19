@@ -12,7 +12,9 @@
 // - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
 //
 // Pin map matches your current sketch:
-//   BUTTON_PIN = 25 (to GND, uses INPUT_PULLDOWN -> active-high)
+
+//   BUTTON_PIN = 25 (to GND, uses INPUT_PULLUP -> active-low)
+
 //   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
 //   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //

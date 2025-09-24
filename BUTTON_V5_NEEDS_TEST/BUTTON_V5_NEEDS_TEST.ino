@@ -4,35 +4,37 @@
 //
 // Features:
 // - Reads DIP (0..63) as button_id
-// - Detects FFA mode when all DIP switches are ON (value == max)  <-- tweak if desired
+// - Detects FFA mode when all DIP switches are ON (value == max)
 // - On boot: sends REGISTER {button_id, ffa, mac[]}
 // - On press: sends PRESS {button_id, pressed=true, press_id, mac[]}
-// - Includes local press debounce
+// - Local press debounce
 // - Receives Hub commands: LED_SET, FEEDBACK (Correct/Incorrect/AlreadyCounted/LockedOut), ALL_FLASH
-// - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
+// - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then locks until round end
 //
-// Pin map matches your current sketch:
-
-//   BUTTON_PIN = 25 (to GND, uses INPUT_PULLUP -> active-low)
-
+// Pin map:
+//   BUTTON_PIN = 25 (to GND through switch, uses INPUT_PULLUP -> active-low)
 //   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
 //   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //
-// NOTE: The Hub must be updated to parse these new message "kinds" and fields.
+// NOTE: The Hub must parse these message kinds/fields.
 // ===================================================
 
 #include <esp_now.h>
 #include <WiFi.h>
+
 #if defined(__has_include)
 #  if __has_include(<esp_wifi.h>)
 #    include <esp_wifi.h>
 #    define HAVE_ESP_WIFI 1
 #  endif
+#  if __has_include(<esp_idf_version.h>)
+#    include <esp_idf_version.h>
+#  endif
 #endif
 
-// ---------- LED polarity ----------
-#define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
-#define BUTTON_ACTIVE_LOW false  // pressed = HIGH when using INPUT_PULLDOWN
+// ---------- LED/button polarity ----------
+#define LED_ACTIVE_LOW false     // set true if your LED turns ON when pin is LOW
+#define BUTTON_ACTIVE_LOW true   // pressed = LOW when using INPUT_PULLUP
 
 // ---------- IO pins ----------
 const int BUTTON_PIN = 25;
@@ -249,10 +251,19 @@ void handleHubPacket(const uint8_t* data, int len) {
 // ===================================================
 //                 ESP-NOW callbacks
 // ===================================================
-void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {
+  (void)info;
   // Optional: debug
   // Serial.print("Send status: "); Serial.println(status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL");
 }
+#else
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  (void)mac_addr;
+  // Optional: debug
+  // Serial.print("Send status: "); Serial.println(status == ESP_NOW_SEND_SUCCESS ? "OK" : "FAIL");
+}
+#endif
 
 void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
   // Only accept from the hub (optional filter)

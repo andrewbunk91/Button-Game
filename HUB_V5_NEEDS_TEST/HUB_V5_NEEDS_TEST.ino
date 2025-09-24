@@ -57,14 +57,14 @@ enum FeedbackCode : uint8_t {
 // Button -> Hub payloads
 typedef struct __attribute__((packed)) {
   uint8_t kind;       // BTN_REGISTER
-  uint8_t button_id;  // 0..15
+  uint8_t button_id;  // 0..63 (6 DIP switches)
   bool    ffa;        // FFA flag for this device
   uint8_t mac[6];     // device MAC (also available from recv_info)
 } btn_register_t;
 
 typedef struct __attribute__((packed)) {
   uint8_t  kind;       // BTN_PRESS
-  uint8_t  button_id;  // 0..15
+  uint8_t  button_id;  // 0..63
   bool     pressed;    // true on edge
   uint16_t press_id;   // increments per press (per-device)
   uint8_t  mac[6];     // sender MAC (convenience)
@@ -107,7 +107,8 @@ static const int MAX_PEERS = 16;
 static Peer peers[MAX_PEERS];
 
 // Map button_id -> index into peers (for Sequence)
-int idToIndex[16]; // -1 if unmapped
+static const uint8_t MAX_BUTTON_ID = 63; // supports 6 DIP switches (values 0..63)
+int idToIndex[MAX_BUTTON_ID + 1]; // -1 if unmapped
 
 // Find peer slot by MAC (exact match)
 int findPeerByMac(const uint8_t mac[6]) {
@@ -141,15 +142,15 @@ void clearPeers() {
   for (int i = 0; i < MAX_PEERS; i++) {
     peers[i] = Peer{};
   }
-  for (int i = 0; i < 16; i++) idToIndex[i] = -1;
+  for (int i = 0; i <= MAX_BUTTON_ID; i++) idToIndex[i] = -1;
 }
 
 // Build id -> index map for sequence mode
 void rebuildIdMap() {
-  for (int i = 0; i < 16; i++) idToIndex[i] = -1;
+  for (int i = 0; i <= MAX_BUTTON_ID; i++) idToIndex[i] = -1;
   for (int i = 0; i < MAX_PEERS; i++) {
     if (!peers[i].present) continue;
-    if (peers[i].button_id > 0 && peers[i].button_id < 16) {
+    if (peers[i].button_id > 0 && peers[i].button_id <= MAX_BUTTON_ID) {
       idToIndex[peers[i].button_id] = i; // last wins on conflict
     }
   }
@@ -209,7 +210,7 @@ void sendLedSet(const uint8_t mac[6], bool on) {
 }
 
 // Unicast FEEDBACK
-void sendFeedback(const uint8_t mac[6], FeedbackCode code) {
+void sendFeedback(const uint8_t mac[6], uint8_t code) {
   hub_feedback_t m{};
   m.kind = HUB_FEEDBACK;
   m.result = (uint8_t)code;
@@ -304,7 +305,7 @@ void closeRegistrationAndStartRound() {
     Serial.print("[Hub] Starting SEQUENCE with "); Serial.print(participants); Serial.println(" participants.");
     // Turn all off, then light the first if it exists
     allLedsOff();
-    int idx = (expected_id < 16) ? idToIndex[expected_id] : -1;
+    int idx = (expected_id <= MAX_BUTTON_ID) ? idToIndex[expected_id] : -1;
     if (idx >= 0) {
       sendLedSet(peers[idx].mac, true);
     } else {
@@ -321,8 +322,7 @@ void finishRound() {
   mode = MODE_IDLE;
   expected_id = 1;
   counted = 0;
-  // Immediately re-open registration for the next round
-  clearPeers();
+  // Immediately re-open registration for the next round while keeping peers
   openRegistrationWindow();
 }
 
@@ -350,7 +350,6 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 
       // Start a fresh registration window if currently idle
       if (!reg_open && mode == MODE_IDLE) {
-        clearPeers();
         openRegistrationWindow();
       }
 
@@ -389,7 +388,6 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 
       // If we get a press while idle and no window is open, open a window (optional)
       if (mode == MODE_IDLE && !reg_open) {
-        clearPeers();
         openRegistrationWindow();
         // Treat this press as part of the NEXT round; ignore now.
         Serial.println("[Hub] Press arrived; opened registration. Press ignored until round starts.");
@@ -430,10 +428,10 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
 
           // Advance or finish
           rebuildIdMap(); // ensure map is current if any hot-swap happened
-          int nextIdx = (expected_id < 16) ? idToIndex[expected_id] : -1;
+          int nextIdx = (expected_id <= MAX_BUTTON_ID) ? idToIndex[expected_id] : -1;
           int total   = countPresent();
 
-          if (expected_id <= 15 && nextIdx >= 0) {
+          if (expected_id <= MAX_BUTTON_ID && nextIdx >= 0) {
             // Light next
             sendLedSet(peers[nextIdx].mac, true);
           } else {
@@ -449,7 +447,7 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
           allLedsOff();
           expected_id = 1;
           rebuildIdMap();
-          int firstIdx = idToIndex[expected_id];
+          int firstIdx = (expected_id <= MAX_BUTTON_ID) ? idToIndex[expected_id] : -1;
           if (firstIdx >= 0) sendLedSet(peers[firstIdx].mac, true);
         }
 

@@ -4,23 +4,24 @@
 //
 // Features:
 // - Reads DIP (0..63) as button_id
-// - Detects FFA mode when all DIP switches are ON (value == max)  <-- tweak if desired
+// - Detects FFA mode when all DIP switches are ON (value == max)
 // - On boot: sends REGISTER {button_id, ffa, mac[]}
 // - On press: sends PRESS {button_id, pressed=true, press_id, mac[]}
-// - Includes local press debounce
+// - Local press debounce
 // - Receives Hub commands: LED_SET, FEEDBACK (Correct/Incorrect/AlreadyCounted/LockedOut), ALL_FLASH
-// - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then the button locks until round end
+// - In FFA mode: LED is ON at boot and turns OFF after first FEEDBACK; then locks until round end
 //
-// Pin map matches your current sketch:
+// Pin map:
 //   BUTTON_PIN = 25 (to GND through switch, uses INPUT_PULLUP -> active-low)
 //   LED_PIN    = 32 (LED_ACTIVE_LOW controls polarity)
 //   DIP pins   = {4,16,17,5,18,19} (switch 1..6)
 //
-// NOTE: The Hub must be updated to parse these new message "kinds" and fields.
+// NOTE: The Hub must parse these message kinds/fields.
 // ===================================================
 
 #include <esp_now.h>
 #include <WiFi.h>
+
 #if defined(__has_include)
 #  if __has_include(<esp_wifi.h>)
 #    include <esp_wifi.h>
@@ -31,8 +32,8 @@
 #  endif
 #endif
 
-// ---------- LED polarity ----------
-#define LED_ACTIVE_LOW false   // set true if your LED turns ON when pin is LOW
+// ---------- LED/button polarity ----------
+#define LED_ACTIVE_LOW false     // set true if your LED turns ON when pin is LOW
 #define BUTTON_ACTIVE_LOW true   // pressed = LOW when using INPUT_PULLUP
 
 // ---------- IO pins ----------
@@ -282,7 +283,7 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   ledOff();
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
   for (uint8_t p : DIP_PINS) pinMode(p, INPUT_PULLUP);
 
   // Compute initial ID and FFA

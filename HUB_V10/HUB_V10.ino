@@ -19,7 +19,6 @@
 
 #include <esp_now.h>  // Provide ESP-NOW peer-to-peer networking primitives.
 #include <WiFi.h>     // Allow us to enter Wi-Fi station mode required by ESP-NOW.
-#include <esp_idf_version.h>  // Provide ESP-IDF version macros for compatibility checks.
 
 // ---------- Optional local debug LEDs ----------
 #define GREEN_LED 12  // GPIO pin wired to the green debug LED on the hub board.
@@ -49,12 +48,6 @@ enum FeedbackCode : uint8_t {     // Possible feedback verdicts from the hub.
   FDBK_ALREADYCOUNT  = 2,         // The hub already counted this button during the round.
   FDBK_LOCKEDOUT     = 3,         // The hub is ignoring this button until the next reset.
 };  // End of FeedbackCode definitions.
-
-enum ResetEvent : uint8_t {                        // Events produced by polling the reset button.
-  RESET_EVENT_NONE = 0,                            // No change detected this loop.
-  RESET_EVENT_TAP  = 1,                            // Short press (release before hold threshold).
-  RESET_EVENT_HOLD = 2,                            // Long hold detected (threshold exceeded).
-};  // End of ResetEvent enum.
 
 // Button -> Hub payloads
 typedef struct __attribute__((packed)) {  // Description of a registration message.
@@ -308,6 +301,12 @@ void finishRound() {                               // Prepare the system to wait
   digitalWrite(GREEN_LED, LOW);                    // Turn the LED back off afterward.
 }  // End of finishRound.
 
+enum ResetEvent : uint8_t {                        // Events produced by polling the reset button.
+  RESET_EVENT_NONE = 0,                            // No change detected this loop.
+  RESET_EVENT_TAP  = 1,                            // Short press (release before hold threshold).
+  RESET_EVENT_HOLD = 2,                            // Long hold detected (threshold exceeded).
+};  // End of ResetEvent enum.
+
 ResetEvent pollResetButton() {                     // Debounce the reset pin and report tap/hold events.
   int reading = digitalRead(RESET_BUTTON_PIN);     // Grab the current electrical level.
   if (reading != resetLastReading) {               // If the raw value changed...
@@ -382,7 +381,7 @@ void handleResetHold() {                          // Respond when the reset butt
 
 void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {   // Optional send callback for debugging.
   // Optional debug
-  // Serial.print("Send status to "); for (int i=0;i<6;i++){Serial.printf("%02X",info->des_addr[i]); if(i<5)Serial.print(":");}
+  // Serial.print("Send status to "); for (int i=0;i<6;i++){Serial.printf("%02X",info->peer_addr[i]); if(i<5)Serial.print(":");}
   // Serial.println(status == ESP_NOW_SEND_SUCCESS ? " OK" : " FAIL");
 }  // End of onDataSent.
 

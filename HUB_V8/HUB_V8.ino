@@ -13,7 +13,7 @@
 // - Tracks per-MAC last_press_id to ignore duplicates
 // - Simple end-of-round reset and re-open registration for the next round
 //
-// The single green LED on the hub board is kept for optional local feedback.
+// LED pins on the hub board are kept for local debug flashes if desired.
 // ===================================================
 
 #include <esp_now.h>  // Provide ESP-NOW peer-to-peer networking primitives.
@@ -21,11 +21,17 @@
 
 // ---------- Optional local debug LEDs ----------
 #define GREEN_LED 12  // GPIO pin wired to the green debug LED on the hub board.
+#define RED_LED   14  // GPIO pin wired to the red debug LED on the hub board.
 
 static inline void flashGreen(uint16_t ms = 120) {   // Briefly pulse the green LED for human feedback.
   digitalWrite(GREEN_LED, HIGH); delay(ms);          // Turn the LED on, wait the requested time.
   digitalWrite(GREEN_LED, LOW);                      // Turn the LED back off.
 }  // End of flashGreen helper.
+
+static inline void flashRed(uint16_t ms = 120) {     // Briefly pulse the red LED for human feedback.
+  digitalWrite(RED_LED, HIGH); delay(ms);            // Turn the LED on, wait the requested time.
+  digitalWrite(RED_LED, LOW);                        // Turn the LED back off.
+}  // End of flashRed helper.
 
 // ===================================================
 //                Wire Protocol (ESP-NOW)
@@ -290,9 +296,6 @@ void finishRound() {                               // Prepare the system to wait
   counted = 0;                                     // Clear FFA counters.
   resetRoundRuntime();                             // Wipe per-peer round flags.
   reg_open = false;                                // Keep registration closed until the reset button is pressed.
-  digitalWrite(GREEN_LED, HIGH);                   // Light the green LED steadily to show the round is done.
-  delay(2000);                                     // Keep the LED illuminated for two seconds as requested.
-  digitalWrite(GREEN_LED, LOW);                    // Turn the LED back off afterward.
 }  // End of finishRound.
 
 bool resetPressedEdge() {                          // Detect a clean press of the manual reset button.
@@ -331,9 +334,9 @@ void handleResetButtonPress() {                    // Respond to a confirmed pre
 //                 ESP-NOW callbacks
 // ===================================================
 
-void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {   // Optional send callback for debugging.
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {   // Optional send callback for debugging.
   // Optional debug
-  // Serial.print("Send status to "); for (int i=0;i<6;i++){Serial.printf("%02X",info->peer_addr[i]); if(i<5)Serial.print(":");}
+  // Serial.print("Send status to "); for (int i=0;i<6;i++){Serial.printf("%02X",mac_addr[i]); if(i<5)Serial.print(":");}
   // Serial.println(status == ESP_NOW_SEND_SUCCESS ? " OK" : " FAIL");
 }  // End of onDataSent.
 
@@ -476,13 +479,15 @@ void setup() {                                                      // Runs once
   Serial.begin(115200);                                             // Open USB serial for logs.
 
   pinMode(GREEN_LED, OUTPUT);                                       // Prepare the green debug LED pin.
-  digitalWrite(GREEN_LED, LOW);                                     // Ensure the green LED starts off.
+  pinMode(RED_LED,   OUTPUT);                                       // Prepare the red debug LED pin.
+  digitalWrite(GREEN_LED, LOW);                                     // Ensure LEDs start off.
+  digitalWrite(RED_LED,   LOW);                                        // Ensure the red LED starts off.
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);                          // Enable pull-up on the reset button pin.
 
   WiFi.mode(WIFI_STA);                                              // Put the ESP32 into station mode for ESP-NOW.
   if (esp_now_init() != ESP_OK) {                                   // Initialize ESP-NOW and confirm success.
     Serial.println("[Hub] ESP-NOW init failed");                    // Log an error if initialization fails.
-    while (true) { delay(1000); }                                   // Halt here forever because networking is required.
+    while (true) { flashRed(200); delay(400); }                     // Flash red forever to signal a fatal error.
   }
 
   esp_now_register_send_cb(onDataSent);                             // Receive notifications about ESP-NOW sends.

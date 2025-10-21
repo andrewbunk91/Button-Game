@@ -1,7 +1,4 @@
 // ================== HUB_V1.4 ==================
-// Transport: ESP-NOW (station mode, fixed channel)
-// Board: ESP32-WROOM-32
-//
 // GPIOs:
 //   - RELAY_PIN  = GPIO12 (active HIGH)
 //   - RESET_PIN  = GPIO18 (INPUT_PULLUP, active LOW)

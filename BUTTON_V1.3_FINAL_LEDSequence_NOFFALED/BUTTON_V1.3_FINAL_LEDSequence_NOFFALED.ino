@@ -1,15 +1,12 @@
 // ================== BUTTON_V1.3 ==================
-// Transport: ESP-NOW (station mode, fixed channel)
-// Board: ESP32-WROOM-32
-//
 // Pins:
 //   BUTTON_PIN = 23 (INPUT_PULLUP, active LOW)
 //   LED_PIN    = 12 (indicator LED)
 //   DIP        = {4,16,17,5,18,19} -> value 0..63; all ON (63) = FFA
 //
 // Behavior:
-//   - Hardcoded Hub MAC (no announce)
-//   - On boot: add hub as peer (fixed channel) and send REGISTER
+//   - Hardcoded Hub MAC
+//   - On boot: add hub as peer
 //   - On HUB_LED_CONTROL(on=true, suspend_rx=true): LED ON and suspend hub listening
 //     until *this* button is pressed; press clears suspend and sends BTN_PRESS
 //   - Obeys FEEDBACK / ROUND_RESET / ALL_FLASH
